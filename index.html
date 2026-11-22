@@ -512,6 +512,33 @@
               </select>
             </div>
             <div>
+              <label class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Payment Method</label>
+              <select id="payment-method" class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-white/15 text-sm text-white focus:outline-none focus:border-white">
+                <option value="card">Card / Apple Pay / Cash App</option>
+                <option value="stripe">Stripe Checkout Link</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="card-fields-box" class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-zinc-900/80 border border-white/10">
+            <div class="sm:col-span-2">
+              <label class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Card Number</label>
+              <input id="card-number" type="text" inputmode="numeric" maxlength="19" placeholder="4242 •••• •••• 4242" class="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-white/15 font-mono text-xs sm:text-sm text-white focus:outline-none focus:border-white" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Exp</label>
+                <input id="card-exp" type="text" inputmode="numeric" maxlength="5" placeholder="08/28" class="w-full px-2.5 py-2 rounded-xl bg-zinc-950 border border-white/15 font-mono text-xs sm:text-sm text-white focus:outline-none focus:border-white" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">CVC</label>
+                <input id="card-cvc" type="text" inputmode="numeric" maxlength="4" placeholder="123" class="w-full px-2.5 py-2 rounded-xl bg-zinc-950 border border-white/15 font-mono text-xs sm:text-sm text-white focus:outline-none focus:border-white" />
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
               <label class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Promo Code (Optional)</label>
               <div class="flex gap-2">
                 <input id="promo-input" type="text" placeholder="VEIN10" class="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-white/15 font-mono text-sm uppercase text-white focus:outline-none focus:border-white" />
@@ -519,6 +546,9 @@
                   Apply
                 </button>
               </div>
+            </div>
+            <div class="flex items-end">
+              <div id="checkout-error-msg" class="hidden w-full px-3 py-2.5 rounded-xl bg-rose-500/15 border border-rose-400/40 text-rose-300 font-mono text-xs"></div>
             </div>
           </div>
 
@@ -547,8 +577,8 @@
             </a>
           </div>
 
-          <button type="submit" class="w-full py-3.5 rounded-2xl bg-white text-obsidian hover:bg-zinc-200 font-display font-bold text-xs uppercase tracking-widest transition">
-            Place Order &amp; Generate Receipt
+          <button id="submit-order-btn" type="submit" class="w-full py-3.5 rounded-2xl bg-white text-obsidian hover:bg-zinc-200 font-display font-bold text-xs uppercase tracking-widest transition">
+            Complete Purchase &amp; Generate Receipt
           </button>
         </form>
       </div>
@@ -927,6 +957,32 @@
       return PRODUCTS.find(p => p.id === id);
     }
 
+    // Format card number with spaces and mask for receipt display
+    function formatCardInput(raw) {
+      const digits = String(raw || '').replace(/\D/g, '').slice(0, 16);
+      return digits.replace(/(.{4})/g, '$1 ').trim();
+    }
+
+    function getMaskedPaymentLabel(method, cardRaw) {
+      if (method === 'stripe') {
+        return 'Stripe Checkout';
+      }
+      const last4 = String(cardRaw || '').replace(/\D/g, '').slice(-4);
+      return last4 ? `Card •••• ${last4}` : 'Direct Checkout';
+    }
+
+    function setCheckoutError(msg) {
+      const box = document.getElementById('checkout-error-msg');
+      if (!box) return;
+      if (!msg) {
+        box.textContent = '';
+        box.classList.add('hidden');
+      } else {
+        box.textContent = msg;
+        box.classList.remove('hidden');
+      }
+    }
+
     // Mount Logos & Spotlight Artwork
     function mountStaticArtwork() {
       document.getElementById('nav-logo-slot').innerHTML = createFloralVeinLogoSVG('w-full h-full');
@@ -1191,13 +1247,27 @@
 
       const firstItem = cart[0] ? getProductById(cart[0].id) : null;
       const stripeUrl = (firstItem && firstItem.stripePaymentLink) || DEFAULT_STRIPE_PAYMENT_LINK;
+      const paymentMethod = document.getElementById('payment-method')?.value || 'card';
+      const cardBox = document.getElementById('card-fields-box');
       const stripeBox = document.getElementById('stripe-link-container');
       const stripeAnchor = document.getElementById('stripe-checkout-link');
-      if (stripeUrl && stripeUrl.startsWith('http')) {
-        stripeAnchor.href = stripeUrl;
-        stripeBox.classList.remove('hidden');
+      const submitBtn = document.getElementById('submit-order-btn');
+
+      if (cardBox) {
+        cardBox.classList.toggle('hidden', paymentMethod === 'stripe');
+      }
+
+      if (paymentMethod === 'stripe') {
+        if (stripeUrl && stripeUrl.startsWith('http')) {
+          stripeAnchor.href = stripeUrl;
+          stripeBox.classList.remove('hidden');
+        } else {
+          stripeBox.classList.add('hidden');
+        }
+        if (submitBtn) submitBtn.textContent = 'Record Order & Generate Receipt';
       } else {
         stripeBox.classList.add('hidden');
+        if (submitBtn) submitBtn.textContent = `Pay ${formatMoney(total)} & Generate Receipt`;
       }
     }
 
@@ -1207,6 +1277,7 @@
         return;
       }
       closeCart();
+      setCheckoutError('');
       document.getElementById('checkout-form-view').classList.remove('hidden');
       document.getElementById('checkout-receipt-view').classList.add('hidden');
       renderCheckoutSummary();
@@ -1229,6 +1300,7 @@
         `Order ID : ${ord.id}`,
         `Tracking : ${ord.trackingNumber}`,
         `Date     : ${new Date(ord.createdAt).toLocaleString()}`,
+        `Payment  : ${ord.paymentLabel || 'Direct Checkout'}`,
         `Buyer    : ${ord.buyer.name} (${ord.buyer.email})`,
         `Ship To  : ${ord.buyer.address}, ZIP ${ord.buyer.zip}`,
         `Route Hub: ${getRegionHubForZip(ord.buyer.zip)}`,
@@ -1268,8 +1340,9 @@
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
           <div><span class="text-zinc-500">Customer:</span> <span class="text-white">${ord.buyer.name}</span></div>
+          <div><span class="text-zinc-500">Payment:</span> <span class="text-emerald-400">${ord.paymentLabel || 'Direct Checkout'}</span></div>
           <div><span class="text-zinc-500">ZIP Route:</span> <span class="text-powder">${ord.buyer.zip} • ${getRegionHubForZip(ord.buyer.zip)}</span></div>
-          <div class="sm:col-span-2"><span class="text-zinc-500">Address:</span> <span class="text-zinc-200">${ord.buyer.address}</span></div>
+          <div><span class="text-zinc-500">Address:</span> <span class="text-zinc-200">${ord.buyer.address}</span></div>
         </div>
         <div class="border-t border-white/10 pt-2 space-y-1">
           ${ord.items.map(i => `
@@ -1657,6 +1730,19 @@
       // Checkout Modal Events
       document.getElementById('close-checkout-btn')?.addEventListener('click', closeCheckoutModal);
       document.getElementById('shipping-method')?.addEventListener('change', renderCheckoutSummary);
+      document.getElementById('payment-method')?.addEventListener('change', () => {
+        setCheckoutError('');
+        renderCheckoutSummary();
+      });
+
+      document.getElementById('card-number')?.addEventListener('input', e => {
+        e.target.value = formatCardInput(e.target.value);
+      });
+
+      document.getElementById('card-exp')?.addEventListener('input', e => {
+        const digits = String(e.target.value || '').replace(/\D/g, '').slice(0, 4);
+        e.target.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+      });
 
       document.getElementById('apply-promo-btn')?.addEventListener('click', () => {
         const code = (document.getElementById('promo-input')?.value || '').trim().toUpperCase();
@@ -1689,6 +1775,42 @@
         const email = document.getElementById('buyer-email').value.trim();
         const address = document.getElementById('buyer-address').value.trim();
         const zip = document.getElementById('buyer-zip').value.trim();
+        const paymentMethod = document.getElementById('payment-method')?.value || 'card';
+        const cardRaw = document.getElementById('card-number')?.value || '';
+        const cardExp = document.getElementById('card-exp')?.value || '';
+        const cardCvc = document.getElementById('card-cvc')?.value || '';
+
+        if (!/^[0-9]{5}(-[0-9]{4})?$/.test(zip)) {
+          setCheckoutError('Enter a valid 5-digit US ZIP code.');
+          return;
+        }
+
+        if (paymentMethod === 'card') {
+          const cardDigits = cardRaw.replace(/\D/g, '');
+          if (cardDigits.length < 13) {
+            setCheckoutError('Enter a valid card number (13–16 digits).');
+            return;
+          }
+          if (!/^(0[1-9]|1[0-2])\/[0-9]{2}$/.test(cardExp)) {
+            setCheckoutError('Enter expiration as MM/YY.');
+            return;
+          }
+          if (cardCvc.replace(/\D/g, '').length < 3) {
+            setCheckoutError('Enter a 3 or 4 digit security code.');
+            return;
+          }
+        }
+
+        // Verify stock before completing order
+        for (const item of cart) {
+          const prod = getProductById(item.id);
+          if (!prod || prod.stock < item.qty) {
+            setCheckoutError(`Insufficient stock for ${item.name}. Update your bag and try again.`);
+            return;
+          }
+        }
+
+        setCheckoutError('');
         const { subtotal, discount, shipping, total, method } = computeCheckoutTotals();
 
         // Deduct stock
@@ -1705,6 +1827,7 @@
           trackingNumber: `TRK${Math.floor(100000000 + Math.random() * 900000000)}`,
           createdAt: Date.now(),
           shippingMethod: method,
+          paymentLabel: getMaskedPaymentLabel(paymentMethod, cardRaw),
           buyer: { name, email, address, zip },
           items: cart.map(i => ({ ...i })),
           subtotal,
@@ -1717,6 +1840,9 @@
         cart = [];
         appliedPromo = null;
         document.getElementById('promo-input').value = '';
+        if (document.getElementById('card-number')) document.getElementById('card-number').value = '';
+        if (document.getElementById('card-exp')) document.getElementById('card-exp').value = '';
+        if (document.getElementById('card-cvc')) document.getElementById('card-cvc').value = '';
         savePersistedState();
 
         updateCartUI();
